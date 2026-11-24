@@ -69,6 +69,9 @@
   .cube.small{padding:13px 16px}
   .cube.small .nm{font-size:16px; margin-top:0}
   .cube.dim{opacity:.6}
+  .cube.on{background:var(--navy); color:var(--yellow)}
+  .cube.on .nm, .cube.on .ds, .cube.on .mt{color:var(--yellow)}
+  .dmini{font-size:12px; opacity:.75; margin-top:6px}
 
   .bar{height:7px; background:#eee8d8; border-radius:99px; overflow:hidden; margin-top:10px}
   .bar i{display:block; height:100%; background:var(--green); border-radius:99px; transition:width .3s}
@@ -79,13 +82,13 @@
   }
 
   /* რეჟიმი */
-  .seg{display:flex; gap:8px; background:rgba(255,255,255,.5); padding:5px; border-radius:14px; margin-bottom:14px}
+  .seg{display:flex; gap:8px; background:rgba(255,255,255,.5); padding:5px; border-radius:14px; margin-bottom:10px}
   .seg button{
     flex:1; border:none; background:transparent; font-family:inherit; font-size:14px;
     font-weight:600; color:var(--navy); padding:9px 4px; border-radius:10px; cursor:pointer;
   }
   .seg button.on{background:var(--navy); color:var(--yellow)}
-  .hint{font-size:12.5px; opacity:.75; margin:-6px 0 14px; text-align:center}
+  .hint{font-size:12.5px; opacity:.75; margin:0 0 14px; text-align:center}
 
   .btn{
     border:none; font-family:inherit; font-size:16px; font-weight:700; cursor:pointer;
@@ -98,13 +101,23 @@
   .row{display:flex; gap:10px}
   .row > *{flex:1}
 
+  /* სირთულის ღილაკები */
+  .drow{display:flex; gap:8px; margin-bottom:10px}
+  .drow button{
+    flex:1; border:1px solid var(--line); background:var(--white); color:var(--navy);
+    font-family:inherit; font-size:13px; font-weight:700; padding:12px 2px;
+    border-radius:14px; cursor:pointer; line-height:1.25;
+  }
+  .drow button b{display:block; font-size:18px; font-weight:400}
+  .drow button.on{background:var(--navy); color:var(--yellow); border-color:var(--navy)}
+
   /* ბარათი */
   .count{text-align:center; font-size:13px; font-weight:600; opacity:.8; margin-bottom:8px}
   .card{
     background:var(--white); border-radius:22px; box-shadow:var(--shadow);
-    min-height:260px; padding:30px 20px; display:flex; flex-direction:column;
+    min-height:240px; padding:34px 20px; display:flex; flex-direction:column;
     align-items:center; justify-content:center; text-align:center; cursor:pointer;
-    position:relative; margin-bottom:14px;
+    position:relative; margin-bottom:12px;
   }
   .card .side{font-size:11px; letter-spacing:.08em; text-transform:uppercase; opacity:.45; position:absolute; top:14px; left:0; right:0}
   .card .main{font-size:25px; font-weight:700; line-height:1.3; word-break:break-word}
@@ -172,7 +185,7 @@
   }
   .sechip button.on{background:var(--navy); color:var(--yellow); border-color:var(--navy)}
 
-  .sub{font-size:13px; font-weight:700; opacity:.8; margin:16px 0 8px}
+  .sub{font-size:13px; font-weight:700; opacity:.8; margin:14px 0 8px}
   textarea{
     width:100%; min-height:120px; border-radius:12px; border:1px solid var(--line);
     padding:10px; font-family:ui-monospace,monospace; font-size:11px; resize:vertical;
@@ -192,11 +205,13 @@
 "use strict";
 
 /* ═════════════ შენახვა ═════════════ */
-const K_KNOW = "myeng.know.v2";    // {cid: {en:1, ka:1}}
-const K_PLACE = "myeng.place.v1";  // {cid: {sec, grp}}
-const K_GRP = "myeng.groups.v1";   // [{id,name,icon}]  ხატიას დამატებული ჯგუფები
-const K_GNAME = "myeng.gname.v1";  // {grpId: "ახალი სახელი"}
-const K_DIR = "myeng.dir";
+const K_KNOW  = "myeng.know.v2";    // {cid: {en:1, ka:1}}
+const K_PLACE = "myeng.place.v1";   // {cid: {sec, grp}}
+const K_DIFF  = "myeng.diff.v1";    // {cid: "easy"|"mid"|"hard"}
+const K_GRP   = "myeng.groups.v1";  // [{id,name,icon}]
+const K_GNAME = "myeng.gname.v1";   // {grpId: "ახალი სახელი"}
+const K_DIR   = "myeng.dir";
+const K_DSEL  = "myeng.dsel";
 
 function load(k, dflt){
   try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? dflt : v; }
@@ -206,15 +221,23 @@ function store(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(
 
 let know  = load(K_KNOW, {});
 let place = load(K_PLACE, {});
+let diffs = load(K_DIFF, {});
 let ugrps = load(K_GRP, []);
 let gname = load(K_GNAME, {});
-let dir   = "en";
-try { dir = localStorage.getItem(K_DIR) || "en"; } catch(e){}
+let dir  = "en";
+let dsel = "all";
+try { dir  = localStorage.getItem(K_DIR)  || "en";  } catch(e){}
+try { dsel = localStorage.getItem(K_DSEL) || "all"; } catch(e){}
 
 /* ═════════════ მონაცემები ═════════════ */
 const SECS = DATA.sections;
+const DIFFS = [
+  { id:"easy", name:"მარტივი", icon:"🟢" },
+  { id:"mid",  name:"საშუალო", icon:"🟡" },
+  { id:"hard", name:"რთული",  icon:"🔴" }
+];
 
-/* ბარათის პირადი ნომერი — ინგლისური ტექსტი. ჯგუფის შეცვლა პროგრესს არ შლის. */
+/* ბარათის პირადი ნომერი — ინგლისური ტექსტი. გადატანა პროგრესს არ შლის. */
 function cid(c){ return String(c.en).trim().toLowerCase(); }
 
 function groups(){
@@ -226,13 +249,37 @@ function grpName(id){ const g = groups().find(g => g.id === id); return g ? g.na
 function grpIcon(id){ const g = groups().find(g => g.id === id); return g ? g.icon : "📘"; }
 function secName(id){ const s = SECS.find(s => s.id === id); return s ? s.name : "—"; }
 
+/* ── ადგილი (განყოფილება + ჯგუფი) ── */
 function placeOf(c){
   const p = place[cid(c)];
   if (p) return { sec: p.sec || null, grp: p.grp || null };
   return { sec: c.sec || null, grp: c.grp || null };
 }
-function setPlace(c, sec, grp){ place[cid(c)] = { sec: sec, grp: grp }; }
+function setPlace(list, sec, grp){
+  list.forEach(c => { place[cid(c)] = { sec: sec, grp: grp }; });
+  store(K_PLACE, place);
+}
 function placed(c){ const p = placeOf(c); return !!(p.sec && p.grp); }
+
+/* ── სირთულე ── */
+function diffOf(c){ return diffs[cid(c)] || null; }
+function setDiff(list, d){
+  list.forEach(c => { if (d) diffs[cid(c)] = d; else delete diffs[cid(c)]; });
+  store(K_DIFF, diffs);
+}
+function dInfo(id){ return DIFFS.find(d => d.id === id) || null; }
+function dLabel(id){ const d = dInfo(id); return d ? d.icon + " " + d.name : "⚪ შეუფასებელი"; }
+function dIcon(id){ const d = dInfo(id); return d ? d.icon : "⚪"; }
+function matchDsel(c){
+  if (dsel === "all") return true;
+  if (dsel === "none") return !diffOf(c);
+  return diffOf(c) === dsel;
+}
+function dCounts(list){
+  const r = { easy:0, mid:0, hard:0, none:0 };
+  list.forEach(c => { const d = diffOf(c); r[d || "none"]++; });
+  return r;
+}
 
 function cardsOf(secId, grpId){
   return DATA.cards.filter(c => {
@@ -249,7 +296,7 @@ function themesOf(list){
   return out;
 }
 
-/* პროგრესი */
+/* ── პროგრესი ── */
 function sOf(c){ return know[cid(c)] || {}; }
 function knownIn(c, d){ return !!sOf(c)[d]; }
 function knownBoth(c){ const s = sOf(c); return !!s.en && !!s.ka; }
@@ -286,7 +333,7 @@ const esc = s => String(s == null ? "" : s)
 function shuffle(a){ const r = a.slice(); for (let i=r.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [r[i],r[j]]=[r[j],r[i]]; } return r; }
 
 let view = { name:"home" };
-let sel = {};                       /* მონიშნული ბარათები: cid -> true */
+let sel = {};
 function selCount(){ return Object.keys(sel).length; }
 function clearSel(){ sel = {}; }
 
@@ -315,6 +362,7 @@ function home(){
   const cubes = SECS.map(s => {
     const list = cardsOf(s.id, "__all");
     const st = stats(list);
+    const d = dCounts(list);
     const gN = groups().filter(g => cardsOf(s.id, g.id).length).length;
     return `<button class="cube" data-sec="${esc(s.id)}">
       <div class="ic">${s.icon}</div>
@@ -323,6 +371,7 @@ function home(){
       <div class="mt"><span><b>${list.length}</b> ბარათი</span>
         <span><b>${gN}</b> ჯგუფი</span>
         ${st.full ? `<span class="kn">🏆 ${st.full}</span>` : ``}</div>
+      ${list.length ? `<div class="dmini">🟢 ${d.easy} · 🟡 ${d.mid} · 🔴 ${d.hard} · ⚪ ${d.none}</div>` : ``}
     </button>`;
   }).join("");
 
@@ -333,15 +382,16 @@ function home(){
     `<div class="top"><div class="ttl"><div class="logo">My <span>English</span></div>
       <small>ჩემი მასალა — ${tot} ბარათი</small></div></div>` +
     `<div class="cubes">${cubes}
-      ${inb.length ? `<button class="cube" data-go="inboxThemes" style="background:#1b2438;color:#FFC93C">
+      ${inb.length ? `<button class="cube on" data-go="inboxThemes">
         <div class="ic">📥</div>
-        <div class="nm" style="color:#FFC93C">გასანაწილებელი — ${inb.length}</div>
-        <div class="ds" style="color:#FFC93C;opacity:.8">ჯგუფი ჯერ არ მინიჭებული ბარათები</div>
+        <div class="nm">გასანაწილებელი — ${inb.length}</div>
+        <div class="ds">ჯგუფი ჯერ არ მინიჭებული ბარათები</div>
       </button>` : ``}
       <button class="cube flat small" data-go="grpAdmin"><div class="nm">⚙️ ჯგუფები</div></button>
       <button class="cube flat small" data-go="progress"><div class="nm">📊 პროგრესი — 🏆 ${totFull} / ${tot}</div></button>
     </div>` +
-    `<div class="foot">ბარათის წინა მხარეს პასუხი არ ჩანს —<br>თვითონ დაფიქრდი, მერე დააჭირე.</div>`;
+    `<div class="foot">🟢 მარტივი · 🟡 საშუალო · 🔴 რთული · ⚪ შეუფასებელი<br>
+      სირთულეს ბარათზევე ანიჭებ და მაშინვე გადადის.</div>`;
 
   app.querySelectorAll("[data-sec]").forEach(b =>
     b.onclick = () => go({ name:"section", sec:b.dataset.sec }));
@@ -353,19 +403,20 @@ function home(){
 function section(){
   const s = SECS.find(x => x.id === view.sec);
   if (!s) return go({ name:"home" });
-  const gs = groups();
   const all = cardsOf(s.id, "__all");
 
-  const cubes = gs.map(g => {
+  const cubes = groups().map(g => {
     const list = cardsOf(s.id, g.id);
     const st = stats(list);
+    const d = dCounts(list);
     const pct = list.length ? Math.round(st.full / list.length * 100) : 0;
     return `<button class="cube ${list.length ? "" : "dim"}" data-grp="${esc(g.id)}">
       <div class="nm">${g.icon} ${esc(g.name)}</div>
       <div class="mt"><span><b>${list.length}</b> ბარათი</span>
         ${st.full ? `<span class="kn">🏆 ${st.full}</span>` : ``}
         ${st.half ? `<span>½ ${st.half}</span>` : ``}</div>
-      ${list.length ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ``}
+      ${list.length ? `<div class="dmini">🟢 ${d.easy} · 🟡 ${d.mid} · 🔴 ${d.hard} · ⚪ ${d.none}</div>
+        <div class="bar"><i style="width:${pct}%"></i></div>` : ``}
     </button>`;
   }).join("");
 
@@ -384,54 +435,70 @@ function section(){
     b.onclick = () => go({ name:"group", sec:s.id, grp:b.dataset.grp }));
 }
 
-/* ═════════════ ჯგუფის მენიუ ═════════════ */
+/* ═════════════ ჯგუფი: სირთულე + რეჟიმი ═════════════ */
 function poolOf(v){
-  const list = cardsOf(v.sec, v.grp);
-  const title = v.grp === "__all" ? "🎲 ყველა ჯგუფი" : grpIcon(v.grp) + " " + grpName(v.grp);
-  return { list: list, title: title };
+  const base = cardsOf(v.sec, v.grp);
+  const list = base.filter(matchDsel);
+  const gTitle = v.grp === "__all" ? "🎲 ყველა ჯგუფი" : grpIcon(v.grp) + " " + grpName(v.grp);
+  return { base: base, list: list, title: gTitle };
 }
 
 function groupMenu(){
   const p = poolOf(view);
+  const d = dCounts(p.base);
   const st = stats(p.list);
   const left = p.list.filter(c => !knownIn(c, dir)).length;
   const back = { name:"section", sec:view.sec };
 
+  const pick = [
+    { id:"all",  label:"🎲 ყველა",        n:p.base.length },
+    { id:"easy", label:"🟢 მარტივი",      n:d.easy },
+    { id:"mid",  label:"🟡 საშუალო",      n:d.mid },
+    { id:"hard", label:"🔴 რთული",        n:d.hard },
+    { id:"none", label:"⚪ შეუფასებელი",  n:d.none }
+  ].map(x => `<button class="cube small ${dsel === x.id ? "on" : "flat"}" data-ds="${x.id}">
+      <div class="nm">${x.label} — ${x.n}</div></button>`).join("");
+
   app.innerHTML =
-    head(esc(p.title), `${secName(view.sec)} · ${st.n} ბარათი · 🏆 ${st.full}${st.half ? " · ½ " + st.half : ""}`, back) +
-    `<div class="seg">
+    head(esc(p.title), `${secName(view.sec)} · ${p.base.length} ბარათი`, back) +
+    `<div class="sub">რომელი სირთულე ვიმეცადინო?</div>
+    <div class="cubes">${pick}</div>
+    <div class="sub">მიმართულება</div>
+    <div class="seg">
       <button data-dir="en" class="${dir === "en" ? "on" : ""}">EN → ქარ</button>
       <button data-dir="ka" class="${dir === "ka" ? "on" : ""}">ქარ → EN</button>
     </div>
-    <div class="hint">${dir === "en"
-      ? "ინგლისურს ხედავ — ქართული უნდა გაიხსენო."
-      : "ქართულს ხედავ — ინგლისური უნდა გაიხსენო."}<br>
-      ამ მიმართულებით გასამეორებელია <b>${left}</b> ბარათი.</div>` +
+    <div class="hint">არჩეულია <b>${st.n}</b> ბარათი · 🏆 ${st.full}${st.half ? " · ½ " + st.half : ""}<br>
+      ამ მიმართულებით გასამეორებელია <b>${left}</b>.</div>` +
     (st.n ? `<div class="cubes">
       <button class="btn" data-m="cards">📇 ბარათები</button>
       <button class="btn ghost" data-m="quiz">✍️ ტესტი</button>
-      ${view.grp === "__all" ? `` : `<button class="cube flat small" data-m="sort">
-        <div class="nm">🗂 ბარათების სია / ჯგუფის შეცვლა</div></button>`}
-    </div>` : `<div class="empty">ჯერ ბარათი არ არის.</div>`) +
+      <button class="cube flat small" data-m="sort">
+        <div class="nm">🗂 ბარათების სია / სირთულე და ჯგუფი</div></button>
+    </div>` : `<div class="empty">ამ სირთულეში ბარათი არ არის.</div>`) +
     (st.full || st.half ? `<div style="text-align:center;margin-top:16px">
-      <button class="mini" data-reset>ამ ჯგუფის პროგრესის გასუფთავება</button></div>` : ``) +
+      <button class="mini" data-reset>არჩეულის პროგრესის გასუფთავება</button></div>` : ``) +
     `<div class="foot">🏆 მხოლოდ მაშინ, როცა EN→ქარ და ქარ→EN<br>ორივე მიმართულებით მონიშნავ (ერთი მხარე = ½).</div>`;
 
   wireBack(back);
+  app.querySelectorAll("[data-ds]").forEach(b => b.onclick = () => {
+    dsel = b.dataset.ds;
+    try { localStorage.setItem(K_DSEL, dsel); } catch(e){}
+    render();
+  });
   app.querySelectorAll("[data-dir]").forEach(b => b.onclick = () => {
     dir = b.dataset.dir;
     try { localStorage.setItem(K_DIR, dir); } catch(e){}
     render();
   });
-  const m = app.querySelectorAll("[data-m]");
-  m.forEach(b => b.onclick = () => {
+  app.querySelectorAll("[data-m]").forEach(b => b.onclick = () => {
     if (b.dataset.m === "cards") go({ name:"cards", sec:view.sec, grp:view.grp, i:0, flip:false, deck:null });
     if (b.dataset.m === "quiz")  go({ name:"quiz",  sec:view.sec, grp:view.grp, qi:0, score:0, qs:null });
     if (b.dataset.m === "sort"){ clearSel(); go({ name:"list", kind:"grp", sec:view.sec, grp:view.grp, back:{ name:"group", sec:view.sec, grp:view.grp } }); }
   });
   const r = app.querySelector("[data-reset]");
   if (r) r.onclick = () => {
-    if (!confirm("ამ ჯგუფის „ვიცი“ ნიშნულები წაიშლება. გავაგრძელო?")) return;
+    if (!confirm("არჩეული ბარათების „ვიცი“ ნიშნულები წაიშლება. სირთულე რჩება. გავაგრძელო?")) return;
     unmarkAll(p.list); render();
   };
 }
@@ -439,21 +506,25 @@ function groupMenu(){
 /* ═════════════ ბარათები ═════════════ */
 function cards(){
   const p = poolOf(view);
-  if (!p.list.length) return go({ name:"section", sec:view.sec });
   if (!view.deck){
+    /* ცარიელ სირთულეში შესვლა — ჯგუფის ეკრანზე ვაბრუნებ */
+    if (!p.list.length) return go({ name:"group", sec:view.sec, grp:view.grp });
     const todo = p.list.filter(c => !knownIn(c, dir));
     view.deck = { items: shuffle(todo.length ? todo : p.list), repeat: todo.length === 0 };
+    view.seen = 0;
   }
   const deck = view.deck.items;
   const back = { name:"group", sec:view.sec, grp:view.grp };
 
   if (view.i >= deck.length){
     const st = stats(p.list);
+    const d = dCounts(p.base);
     app.innerHTML =
       head(esc(p.title), "დასტა დასრულდა", back) +
       `<div class="score"><div class="big">👏</div>
-        <div class="sub">ამ წრეზე <b>${deck.length}</b> ბარათი გაიარე.<br>
-        სულ 🏆 <b>${st.full}</b> ბარათი ნამდვილად იცი${st.half ? `, ნახევრად — ${st.half}` : ``}.</div></div>
+        <div class="sub">ამ წრეზე <b>${view.seen || deck.length}</b> ბარათი გაიარე.<br>
+        🏆 <b>${st.full}</b> ნამდვილად იცი${st.half ? `, ½ ${st.half}` : ``}.<br>
+        🟢 ${d.easy} · 🟡 ${d.mid} · 🔴 ${d.hard} · ⚪ ${d.none}</div></div>
       <div class="row"><button class="btn" data-again>🔁 თავიდან</button>
         <button class="btn ghost" data-back2>ჯგუფი</button></div>`;
     wireBack(back);
@@ -464,6 +535,7 @@ function cards(){
 
   const c = deck[view.i];
   const s = sOf(c);
+  const cd = diffOf(c);
   const front = dir === "en" ? c.en : c.ka;
   const backT = dir === "en" ? c.ka : c.en;
 
@@ -475,21 +547,27 @@ function cards(){
        ${c.exka ? `<div class="exka">${esc(c.exka)}</div>` : ``}
        <div class="tap">${esc(front)}</div>`
     : `<div class="side">${dir === "en" ? "ინგლისური" : "ქართული"}</div>
-       ${s.en || s.ka ? `<div class="badge">${s.en && s.ka ? "🏆" : "½"}</div>` : ``}
+       <div class="badge">${dIcon(cd)}${s.en && s.ka ? " 🏆" : (s.en || s.ka ? " ½" : "")}</div>
        ${dir === "en" ? `<button class="spk" data-spk>🔊</button>` : ``}
        <div class="main ${dir === "ka" ? "ge" : ""}">${esc(front)}</div>
        <div class="tap">დააჭირე პასუხისთვის</div>`;
 
   app.innerHTML =
-    head(esc(p.title), `${dir === "en" ? "EN → ქარ" : "ქარ → EN"}${view.deck.repeat ? " · გამეორება" : ""}`, back) +
+    head(esc(p.title), `${dsel === "all" ? "🎲 ყველა" : dLabel(dsel === "none" ? null : dsel)} · ${dir === "en" ? "EN → ქარ" : "ქარ → EN"}`, back) +
     `<div class="count">${view.i + 1} / ${deck.length}${view.grp === "__all" ? " · " + esc(grpName(placeOf(c).grp)) : ""}</div>
     <div class="card" data-card>${face}</div>
+    <div class="sub" style="margin:0 0 8px">რა სირთულისაა? (დაჭერით შემდეგზე გადადის)</div>
+    <div class="drow">${DIFFS.map(d =>
+      `<button data-rate="${d.id}" class="${cd === d.id ? "on" : ""}"><b>${d.icon}</b>${esc(d.name)}</button>`
+    ).join("")}</div>
+    ${cd ? `<div style="text-align:center;margin:-4px 0 8px">
+      <button class="mini" data-unrate>⚪ სირთულის მოხსნა</button></div>` : ``}
     <div class="row" style="margin-bottom:10px">
       <button class="btn ghost" data-skip>🔁 გასამეორებელი</button>
       <button class="btn" data-know>✅ ვიცი</button></div>
     <div class="row">
       <button class="mini" data-prev>← წინა</button>
-      <button class="mini" data-move>🗂 ჯგუფის შეცვლა</button>
+      <button class="mini" data-move>🗂 ჯგუფი</button>
       <button class="mini" data-next>შემდეგი →</button></div>`;
 
   wireBack(back);
@@ -499,8 +577,22 @@ function cards(){
   };
   const spk = app.querySelector("[data-spk]");
   if (spk) spk.onclick = e => { e.stopPropagation(); say(c.en); };
-  app.querySelector("[data-know]").onclick = () => { mark(c, dir); view.i++; view.flip = false; render(); };
-  app.querySelector("[data-skip]").onclick = () => { view.i++; view.flip = false; render(); };
+
+  /* სირთულის მინიჭება — თუ არჩეულ ფილტრში აღარ ჯდება, დასტიდან ამოვარდება */
+  function rate(d){
+    setDiff([c], d);
+    view.flip = false;
+    view.seen = (view.seen || 0) + 1;
+    if (!matchDsel(c)) deck.splice(view.i, 1);
+    else view.i++;
+    render();
+  }
+  app.querySelectorAll("[data-rate]").forEach(b => b.onclick = () => rate(b.dataset.rate));
+  const ur = app.querySelector("[data-unrate]");
+  if (ur) ur.onclick = () => rate(null);
+
+  app.querySelector("[data-know]").onclick = () => { mark(c, dir); view.i++; view.seen = (view.seen || 0) + 1; view.flip = false; render(); };
+  app.querySelector("[data-skip]").onclick = () => { view.i++; view.seen = (view.seen || 0) + 1; view.flip = false; render(); };
   app.querySelector("[data-next]").onclick = () => { view.i++; view.flip = false; render(); };
   app.querySelector("[data-prev]").onclick = () => { if (view.i > 0) view.i--; view.flip = false; render(); };
   app.querySelector("[data-move]").onclick = () => {
@@ -556,7 +648,7 @@ function quiz(){
   }
 
   app.innerHTML =
-    head(esc(p.title), `ტესტი · ${dir === "en" ? "EN → ქარ" : "ქარ → EN"} · ქულა ${view.score}`, back) +
+    head(esc(p.title), `ტესტი · ${dsel === "all" ? "🎲 ყველა" : dLabel(dsel === "none" ? null : dsel)} · ქულა ${view.score}`, back) +
     `<div class="count">${view.qi + 1} / ${qs.length}</div>
     <div class="q ${dir === "ka" ? "ge" : ""}">${dir === "en" ? `<button class="spk" data-spk>🔊</button>` : ``}${esc(question)}</div>
     <div class="opts">${q.opts.map((o,i) => {
@@ -564,7 +656,10 @@ function quiz(){
       if (q.answered){ if (o.ok) cls += " right"; else if (i === q.chosen) cls += " wrong"; }
       return `<button class="${cls}" data-o="${i}" ${q.answered ? "disabled" : ""}>${esc(o.text)}</button>`;
     }).join("")}</div>${fb}
-    ${q.answered ? `<div style="margin-top:12px"><button class="btn" data-nextq>შემდეგი →</button></div>` : ``}`;
+    ${q.answered ? `<div class="drow" style="margin-top:12px">${DIFFS.map(d =>
+      `<button data-rate="${d.id}" class="${diffOf(q.c) === d.id ? "on" : ""}"><b>${d.icon}</b>${esc(d.name)}</button>`
+    ).join("")}</div>
+    <button class="btn" data-nextq>შემდეგი →</button>` : ``}`;
 
   wireBack(back);
   const spk = app.querySelector("[data-spk]");
@@ -575,6 +670,7 @@ function quiz(){
     if (q.opts[q.chosen].ok) view.score++;
     render();
   });
+  app.querySelectorAll("[data-rate]").forEach(b => b.onclick = () => { setDiff([q.c], b.dataset.rate); render(); });
   const nq = app.querySelector("[data-nextq]");
   if (nq) nq.onclick = () => { view.qi++; render(); };
 }
@@ -593,9 +689,9 @@ function inboxThemes(){
     head("📥 გასანაწილებელი", `${inb.length} ბარათი · ${ths.length} თემა`, back) +
     `<div class="hint">აირჩიე თემა და მთელი თემა ერთად მიაბი ჯგუფს,<br>ან შიგნით ცალ-ცალკე მონიშნე.</div>
     <div class="cubes">
-      <button class="cube" style="background:#1b2438;color:#FFC93C" data-allinbox>
-        <div class="nm" style="color:#FFC93C">📦 ყველა ${inb.length} ბარათი ერთად</div>
-        <div class="ds" style="color:#FFC93C;opacity:.8">ერთ ჯგუფში მიბმა</div></button>
+      <button class="cube on" data-allinbox>
+        <div class="nm">📦 ყველა ${inb.length} ბარათი ერთად</div>
+        <div class="ds">ერთ ჯგუფში მიბმა</div></button>
       ${ths.map((t,i) => {
         const n = inb.filter(c => (c.src || "სხვა") === t).length;
         return `<button class="cube small" data-th="${i}">
@@ -617,7 +713,7 @@ function inboxThemes(){
 /* ═════════════ ბარათების სია + მონიშვნა ═════════════ */
 function listRows(){
   if (view.kind === "theme") return inbox().filter(c => (c.src || "სხვა") === view.theme);
-  return cardsOf(view.sec, view.grp);
+  return cardsOf(view.sec, view.grp).filter(matchDsel);
 }
 
 function list(){
@@ -637,7 +733,7 @@ function list(){
       return `<div class="lrow ${on ? "on" : ""}" data-c="${esc(cid(c))}">
         <div class="box">${on ? "✓" : ""}</div>
         <div class="tx">
-          <div class="en">${esc(c.en)}</div>
+          <div class="en">${dIcon(diffOf(c))} ${esc(c.en)}</div>
           <div class="ka">${esc(c.ka)}</div>
           <div class="pl">${p.sec && p.grp
             ? `${esc(secName(p.sec))} · ${esc(grpName(p.grp))}`
@@ -646,7 +742,13 @@ function list(){
         <div class="gear" data-one="${esc(cid(c))}">🗂</div>
       </div>`;
     }).join("") : `<div class="empty">ბარათი არ არის.</div>`) +
-    (n ? `<div class="sticky"><button class="btn" data-move>🗂 მონიშნული ${n} ბარათს ჯგუფის მინიჭება</button></div>` : ``) +
+    (n ? `<div class="sticky">
+      <div class="sub" style="margin:0 0 6px">მონიშნულ ${n} ბარათს სირთულე:</div>
+      <div class="drow">${DIFFS.map(d =>
+        `<button data-bulk="${d.id}"><b>${d.icon}</b>${esc(d.name)}</button>`).join("")}</div>
+      <button class="btn" data-move>🗂 ჯგუფის მინიჭება</button>
+      <div style="text-align:center"><button class="mini" data-bulk-none>⚪ სირთულის მოხსნა</button></div>
+    </div>` : ``) +
     `<div class="foot">ბარათზე დააჭირე — მოინიშნება.<br>🗂 ნიშნავს მხოლოდ ამ ერთი ბარათის გადატანას.</div>`;
 
   wireBack(back);
@@ -665,6 +767,12 @@ function list(){
     if (sel[k]) delete sel[k]; else sel[k] = true;
     render();
   });
+  const picked = () => DATA.cards.filter(c => sel[cid(c)]);
+  app.querySelectorAll("[data-bulk]").forEach(b => b.onclick = () => {
+    setDiff(picked(), b.dataset.bulk); clearSel(); render();
+  });
+  const bn = app.querySelector("[data-bulk-none]");
+  if (bn) bn.onclick = () => { setDiff(picked(), null); clearSel(); render(); };
   const mv = app.querySelector("[data-move]");
   if (mv) mv.onclick = () => go({ name:"assign", back:view });
 }
@@ -689,9 +797,8 @@ function assign(){
     ).join("")}</div>
     <div class="sub">2. რომელ ჯგუფში?</div>
     <div class="cubes">${groups().map(g =>
-      `<button class="cube small ${view.pGrp === g.id ? "" : "flat"}" data-pg="${esc(g.id)}"
-        style="${view.pGrp === g.id ? "background:#1b2438;color:#FFC93C" : ""}">
-        <div class="nm" style="${view.pGrp === g.id ? "color:#FFC93C" : ""}">${g.icon} ${esc(g.name)}</div></button>`
+      `<button class="cube small ${view.pGrp === g.id ? "on" : "flat"}" data-pg="${esc(g.id)}">
+        <div class="nm">${g.icon} ${esc(g.name)}</div></button>`
     ).join("")}
       <button class="cube flat small" data-newg><div class="nm">➕ ახალი ჯგუფი</div></button>
     </div>
@@ -715,14 +822,12 @@ function assign(){
   const sv = app.querySelector("[data-save]");
   if (sv) sv.onclick = () => {
     if (!view.pSec || !view.pGrp) return;
-    picked.forEach(c => setPlace(c, view.pSec, view.pGrp));
-    store(K_PLACE, place);
+    setPlace(picked, view.pSec, view.pGrp);
     clearSel();
     go(back.name === "list" && back.kind === "theme" ? { name:"inboxThemes" } : back);
   };
   app.querySelector("[data-inbox]").onclick = () => {
-    picked.forEach(c => setPlace(c, null, null));
-    store(K_PLACE, place);
+    setPlace(picked, null, null);
     clearSel(); go(back);
   };
 }
@@ -731,29 +836,31 @@ function assign(){
 function grpAdmin(){
   const back = { name:"home" };
   const gs = groups();
-  const exp = JSON.stringify({ place: place, groups: ugrps, gname: gname });
+  const exp = JSON.stringify({ place: place, diff: diffs, groups: ugrps, gname: gname });
 
   app.innerHTML =
     head("⚙️ ჯგუფები", `${gs.length} ჯგუფი · სამივე განყოფილებაში`, back) +
     `<div class="cubes">${gs.map(g => {
-      const n = DATA.cards.filter(c => placeOf(c).grp === g.id).length;
-      const mine = ugrps.some(u => u.id === g.id);
+      const mine = DATA.cards.filter(c => placeOf(c).grp === g.id);
+      const d = dCounts(mine);
+      const own = ugrps.some(u => u.id === g.id);
       return `<div class="cube small">
         <div class="nm">${g.icon} ${esc(g.name)}</div>
-        <div class="mt"><span><b>${n}</b> ბარათი</span>${mine ? `<span>ჩემი დამატებული</span>` : ``}</div>
+        <div class="mt"><span><b>${mine.length}</b> ბარათი</span>${own ? `<span>ჩემი დამატებული</span>` : ``}</div>
+        ${mine.length ? `<div class="dmini">🟢 ${d.easy} · 🟡 ${d.mid} · 🔴 ${d.hard} · ⚪ ${d.none}</div>` : ``}
         <div style="margin-top:6px">
           <button class="mini" data-ren="${esc(g.id)}">✏️ სახელის შეცვლა</button>
-          ${mine && !n ? `<button class="mini" data-del="${esc(g.id)}">🗑 წაშლა</button>` : ``}
+          ${own && !mine.length ? `<button class="mini" data-del="${esc(g.id)}">🗑 წაშლა</button>` : ``}
         </div></div>`;
     }).join("")}
       <button class="cube flat small" data-newg><div class="nm">➕ ახალი ჯგუფი</div></button>
     </div>
     <div class="sub">📤 ჩემი დალაგების ასლი</div>
     <div class="hint" style="margin:0 0 8px;text-align:left">ეს ტექსტი ჩააგდე ჩატში — ასე შენი
-      დალაგება ფაილშიც ჩაიწერება და სხვა ტელეფონზეც გადმოვა.</div>
+      დალაგება და სირთულეები ფაილშიც ჩაიწერება და სხვა ტელეფონზეც გადმოვა.</div>
     <textarea readonly id="exp">${esc(exp)}</textarea>
     <button class="btn ghost" data-copy style="margin-top:8px">📋 კოპირება</button>
-    <div class="foot">ჯგუფი სამივე განყოფილებაშია —<br>JAY'S Lab, Interested და next-ში ცალკე ბარათებით.</div>`;
+    <div class="foot">ჯგუფი სამივე განყოფილებაშია; სირთულე თითო ბარათზეა.</div>`;
 
   wireBack(back);
   app.querySelector("[data-newg]").onclick = () => {
@@ -790,15 +897,18 @@ function progress(){
   const rows = SECS.map(s => {
     const list = cardsOf(s.id, "__all");
     const st = stats(list);
+    const d = dCounts(list);
     const pct = list.length ? Math.round(st.full / list.length * 100) : 0;
     return `<div class="cube">
       <div class="nm">${s.icon} ${esc(s.name)}</div>
       <div class="mt"><span><b>${list.length}</b> ბარათი</span>
         <span class="kn">🏆 ${st.full}</span>${st.half ? `<span>½ ${st.half}</span>` : ``}
         <span>${pct}%</span></div>
+      ${list.length ? `<div class="dmini">🟢 ${d.easy} · 🟡 ${d.mid} · 🔴 ${d.hard} · ⚪ ${d.none}</div>` : ``}
       <div class="bar"><i style="width:${pct}%"></i></div></div>`;
   }).join("");
   const all = stats(DATA.cards);
+  const d = dCounts(DATA.cards);
   const inb = inbox().length;
 
   app.innerHTML =
@@ -806,14 +916,19 @@ function progress(){
     `<div class="score"><div class="big">${all.full} / ${all.n}</div>
       <div class="sub">ნამდვილად ნასწავლი ბარათი${all.half ? ` · ნახევრად ${all.half}` : ``}
       ${inb ? `<br>📥 გასანაწილებელში — ${inb}` : ``}</div></div>
+    <div class="cube" style="margin-bottom:12px">
+      <div class="nm">სირთულის მიხედვით</div>
+      <div class="mt"><span>🟢 მარტივი <b>${d.easy}</b></span><span>🟡 საშუალო <b>${d.mid}</b></span></div>
+      <div class="mt"><span>🔴 რთული <b>${d.hard}</b></span><span>⚪ შეუფასებელი <b>${d.none}</b></span></div>
+    </div>
     <div class="cubes">${rows}</div>
     <div style="text-align:center;margin-top:16px">
       <button class="mini" data-clear>მთელი პროგრესის გასუფთავება</button></div>
-    <div class="foot">პროგრესი და ჯგუფების დალაგება ამ ტელეფონის ბრაუზერში ინახება.</div>`;
+    <div class="foot">პროგრესი, ჯგუფები და სირთულეები ამ ტელეფონის ბრაუზერში ინახება.</div>`;
 
   wireBack(back);
   app.querySelector("[data-clear]").onclick = () => {
-    if (!confirm("მთელი პროგრესი („ვიცი“ ნიშნულები) წაიშლება. ჯგუფები რჩება. გავაგრძელო?")) return;
+    if (!confirm("მთელი პროგრესი („ვიცი“ ნიშნულები) წაიშლება. ჯგუფები და სირთულეები რჩება. გავაგრძელო?")) return;
     know = {}; store(K_KNOW, know); render();
   };
 }

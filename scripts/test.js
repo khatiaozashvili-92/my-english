@@ -75,12 +75,13 @@ sandbox.window = sandbox;
 const ctx = vm.createContext(sandbox);
 vm.runInContext(dataJs, ctx);
 // let/const არ ხდება global property vm-ში — ვამატებ ხიდს
-vm.runInContext(appJs + ";globalThis.__t={get view(){return view},set view(v){view=v},get dir(){return dir},set dir(v){dir=v},get sel(){return sel}};", ctx);
+vm.runInContext(appJs + ";globalThis.__t={get view(){return view},set view(v){view=v},get dir(){return dir},set dir(v){dir=v},get sel(){return sel},get dsel(){return dsel},set dsel(v){dsel=v},get diffs(){return diffs}};", ctx);
 
 const S = sandbox;
 const T = () => S.__t;
 Object.defineProperty(S, "view", { get: () => T().view, set: v => { T().view = v; } });
 Object.defineProperty(S, "dir",  { get: () => T().dir,  set: v => { T().dir = v; } });
+Object.defineProperty(S, "dsel", { get: () => T().dsel, set: v => { T().dsel = v; } });
 
 const click = (sel, i) => {
   const els = appEl.querySelectorAll(sel);
@@ -128,7 +129,7 @@ ok(/10 ბარათი/.test(lastHtml), "თემაში 10 ბარა�
 ok(/ჯგუფი არ აქვს/.test(lastHtml), "ბარათს ჯერ ჯგუფი არ უნდა ჰქონდეს");
 click("[data-all]");
 ok(Object.keys(T().sel).length === 10, "10 ბარათი უნდა მოინიშნოს, მოინიშნა " + Object.keys(T().sel).length);
-ok(/მონიშნული 10 ბარათს ჯგუფის მინიჭება/.test(lastHtml), "ქვედა ღილაკი მონიშვნის მერე");
+ok(/მონიშნული 10/.test(lastHtml) && /🗂 ჯგუფის მინიჭება/.test(lastHtml), "ქვედა ღილაკი მონიშვნის მერე");
 click("[data-move]");
 ok(S.view.name === "assign", "უნდა გადავიდეს მინიჭების ეკრანზე, გადავიდა: " + S.view.name);
 ok(/10 ბარათი/.test(lastHtml) && /რომელ განყოფილებაში/.test(lastHtml), "მინიჭების ეკრანი");
@@ -253,6 +254,104 @@ ok(S.view.qs.length === 20, "დიდ დასტაზე 20 კითხვ�
 /* ───────── პროგრესი ───────── */
 S.go({name:"progress"});
 ok(/\/ 300/.test(lastHtml), "პროგრესზე სულ 300: " + (lastHtml.match(/\d+ \/ \d+/)||[]));
+
+/* ═════════ სირთულე: მარტივი / საშუალო / რთული ═════════ */
+S.dsel = "all";
+
+/* ჯგუფის ეკრანზე ხუთი არჩევანი უნდა იყოს */
+S.go({name:"group", sec:"interested", grp:"idioms"});
+["🎲 ყველა — 300","🟢 მარტივი — 0","🟡 საშუალო — 0","🔴 რთული — 0","⚪ შეუფასებელი — 300"]
+  .forEach(t => ok(lastHtml.includes(t), "ჯგუფის ეკრანზე უნდა ეწეროს „" + t + "“"));
+
+/* ბარათზე სამი ღილაკი და დაჭერით შემდეგზე გადასვლა */
+S.go({name:"cards", sec:"interested", grp:"idioms", i:0, flip:false, deck:null});
+ok(/data-rate="easy"/.test(lastHtml) && /data-rate="mid"/.test(lastHtml) && /data-rate="hard"/.test(lastHtml),
+  "ბარათზე სამივე სირთულის ღილაკი უნდა იყოს");
+const d0 = S.view.deck.items[0], d1 = S.view.deck.items[1], d2 = S.view.deck.items[2];
+click("[data-rate=easy]");
+ok(T().diffs[d0.en.toLowerCase()] === "easy", "ბარათს „მარტივი“ უნდა მიენიჭოს");
+ok(S.view.i === 1, "მინიჭების მერე შემდეგ ბარათზე უნდა გადავიდეს: i=" + S.view.i);
+click("[data-rate=hard]");
+click("[data-rate=mid]");
+ok(T().diffs[d1.en.toLowerCase()] === "hard" && T().diffs[d2.en.toLowerCase()] === "mid",
+  "რთული და საშუალო უნდა მიენიჭოს");
+
+/* მთავარ ეკრანზე და ჯგუფში რიცხვები უნდა განახლდეს */
+S.go({name:"section", sec:"interested"});
+ok(/🟢 1 · 🟡 1 · 🔴 1 · ⚪ 297/.test(lastHtml), "ჯგუფის კუბიკზე სირთულის რიცხვები: " + (lastHtml.match(/🟢 \d+ · 🟡 \d+ · 🔴 \d+ · ⚪ \d+/)||[]));
+
+/* „მარტივში“ შესვლა — მხოლოდ ერთი ბარათი */
+S.dsel = "easy";
+S.go({name:"group", sec:"interested", grp:"idioms"});
+ok(/არჩეულია <b>1<\/b> ბარათი/.test(lastHtml), "მარტივში 1 ბარათი: " + (lastHtml.match(/არჩეულია <b>\d+<\/b>/)||[]));
+S.go({name:"cards", sec:"interested", grp:"idioms", i:0, flip:false, deck:null});
+ok(S.view.deck.items.length === 1, "მარტივის დასტაში 1 ბარათი: " + S.view.deck.items.length);
+ok(lastHtml.includes(d0.en), "დასტაში სწორი ბარათი უნდა იყოს");
+ok(/🟢/.test(lastHtml), "ბარათზე მიმდინარე სირთულე უნდა ჩანდეს");
+
+/* მარტივიდან რთულში გადატანა — ბარათი მაშინვე ამოვარდება დასტიდან */
+click("[data-rate=hard]");
+ok(T().diffs[d0.en.toLowerCase()] === "hard", "მარტივიდან რთულში უნდა გადავიდეს");
+ok(S.view.deck.items.length === 0, "⚠️ გადატანილი ბარათი მიმდინარე დასტიდან უნდა ამოვარდეს: " + S.view.deck.items.length);
+ok(/დასტა დასრულდა/.test(lastHtml), "დასტა უნდა დასრულდეს");
+S.dsel = "easy";
+S.go({name:"group", sec:"interested", grp:"idioms"});
+ok(/🟢 მარტივი — 0/.test(lastHtml), "მარტივში 0 უნდა დარჩეს");
+S.dsel = "hard";
+S.go({name:"group", sec:"interested", grp:"idioms"});
+ok(/🔴 რთული — 2/.test(lastHtml), "რთულში 2 უნდა იყოს: " + (lastHtml.match(/🔴 რთული — \d+/)||[]));
+
+/* სირთულის მოხსნა */
+S.go({name:"cards", sec:"interested", grp:"idioms", i:0, flip:false, deck:null});
+const h0 = S.view.deck.items[0];
+click("[data-unrate]");
+ok(!T().diffs[h0.en.toLowerCase()], "სირთულე უნდა მოიხსნას");
+
+/* სიიდან ბულკ-მინიჭება */
+S.dsel = "none";
+S.go({name:"list", kind:"grp", sec:"interested", grp:"idioms", back:{name:"home"}});
+const noneRows = S.view.kind;
+click("[data-all]");
+ok(Object.keys(T().sel).length > 200, "შეუფასებლები უნდა მოინიშნოს: " + Object.keys(T().sel).length);
+ok(/მონიშნულ \d+ ბარათს სირთულე/.test(lastHtml), "ბულკ-სირთულის ზოლი უნდა გამოჩნდეს");
+click("[data-bulk=mid]");
+ok(Object.keys(T().sel).length === 0, "ბულკის მერე მონიშვნა უნდა მოიხსნას");
+S.dsel = "mid";
+S.go({name:"group", sec:"interested", grp:"idioms"});
+ok(/🟡 საშუალო — 29[89]/.test(lastHtml), "საშუალოში ~298 ბარათი: " + (lastHtml.match(/🟡 საშუალო — \d+/)||[]));
+S.dsel = "none";
+S.go({name:"group", sec:"interested", grp:"idioms"});
+ok(/⚪ შეუფასებელი — 0/.test(lastHtml), "შეუფასებელი უნდა დაიცარიელდეს: " + (lastHtml.match(/⚪ შეუფასებელი — \d+/)||[]));
+
+/* სირთულე ჯგუფის გადატანისას არ უნდა დაიკარგოს */
+S.dsel = "all";
+S.go({name:"list", kind:"grp", sec:"interested", grp:"idioms", back:{name:"home"}});
+click("[data-all]");
+click("[data-move]");
+click("[data-ps=jay]");
+click("[data-pg=idioms]");
+click("[data-save]");
+S.go({name:"section", sec:"jay"});
+ok(/🟡 29[89]/.test(lastHtml), "⚠️ გადატანის მერე სირთულე უნდა შენარჩუნდეს: " + (lastHtml.match(/🟢 \d+ · 🟡 \d+ · 🔴 \d+ · ⚪ \d+/)||[]));
+
+/* ტესტში პასუხის მერე სირთულის მინიჭება */
+S.dsel = "all";
+S.go({name:"quiz", sec:"jay", grp:"idioms", qi:0, score:0, qs:null});
+S.view.qs[0].answered = true; S.view.qs[0].chosen = 0; S.render();
+ok(/data-rate="hard"/.test(lastHtml), "ტესტში პასუხის მერე სირთულის ღილაკები უნდა იყოს");
+const qc = S.view.qs[0].c;
+click("[data-rate=hard]");
+ok(T().diffs[qc.en.toLowerCase()] === "hard", "ტესტიდანაც უნდა მიენიჭოს სირთულე");
+
+/* ექსპორტში სირთულეც უნდა იყოს */
+S.go({name:"grpAdmin"});
+const expJson = lastHtml.match(/<textarea readonly id="exp">([\s\S]*?)<\/textarea>/);
+ok(!!expJson, "ექსპორტის ველი უნდა იყოს");
+if (expJson){
+  const parsed = JSON.parse(expJson[1].replace(/&quot;/g,'"').replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">"));
+  ok(parsed.diff && Object.keys(parsed.diff).length > 200, "ექსპორტში სირთულეები უნდა იყოს");
+  ok(parsed.place && Object.keys(parsed.place).length > 200, "ექსპორტში ჯგუფები უნდა იყოს");
+}
 
 /* ───────── ფაილები ───────── */
 ["index.html","data.js","sw.js","manifest.webmanifest","icon-180.png","icon-192.png","icon-512.png","README.md"]
