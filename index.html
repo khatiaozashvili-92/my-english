@@ -855,12 +855,15 @@ function grpAdmin(){
     }).join("")}
       <button class="cube flat small" data-newg><div class="nm">➕ ახალი ჯგუფი</div></button>
     </div>
-    <div class="sub">📤 ჩემი დალაგების ასლი</div>
-    <div class="hint" style="margin:0 0 8px;text-align:left">ეს ტექსტი ჩააგდე ჩატში — ასე შენი
-      დალაგება და სირთულეები ფაილშიც ჩაიწერება და სხვა ტელეფონზეც გადმოვა.</div>
-    <textarea readonly id="exp">${esc(exp)}</textarea>
-    <button class="btn ghost" data-copy style="margin-top:8px">📋 კოპირება</button>
-    <div class="foot">ჯგუფი სამივე განყოფილებაშია; სირთულე თითო ბარათზეა.</div>`;
+    <div class="sub">💾 სარეზერვო ასლი</div>
+    <div class="hint" style="margin:0 0 8px;text-align:left">შენი დალაგება (რომელი ბარათი სად არის
+      და რა სირთულისაა) მხოლოდ <b>ამ ბრაუზერშია</b>. რომ არ დაიკარგოს და სხვა ტელეფონზეც
+      გადმოვიდეს — დააჭირე ქვემოთ და მიღებული ტექსტი ჩატში ჩააგდე. სხვა დროს არ გჭირდება.</div>
+    <button class="btn ghost" data-copy>📋 ასლის კოპირება</button>
+    <div style="text-align:center"><button class="mini" data-showexp>
+      ${view.showExp ? "დამალე ტექსტი" : "ტექსტის ნახვა"}</button></div>
+    ${view.showExp ? `<textarea readonly id="exp">${esc(exp)}</textarea>` : ``}
+    <div class="foot">ჯგუფი სამივე განყოფილებაშია;<br>სირთულე (🟢🟡🔴) კი თითო ბარათზე, ჯგუფის შიგნით.</div>`;
 
   wireBack(back);
   app.querySelector("[data-newg]").onclick = () => {
@@ -881,13 +884,20 @@ function grpAdmin(){
     ugrps = ugrps.filter(g => g.id !== id); store(K_GRP, ugrps);
     delete gname[id]; store(K_GNAME, gname); render();
   });
+  app.querySelector("[data-showexp]").onclick = () => { view.showExp = !view.showExp; render(); };
   app.querySelector("[data-copy]").onclick = () => {
-    const ta = document.getElementById("exp");
     try {
-      if (navigator.clipboard) navigator.clipboard.writeText(ta.value);
-      else { ta.select(); document.execCommand("copy"); }
-      alert("დაკოპირდა ✅");
-    } catch(e){ ta.select(); }
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(exp);
+        alert("ასლი დაკოპირდა ✅\nახლა ჩატში ჩასვი (Ctrl+V).");
+        return;
+      }
+    } catch(e){}
+    /* ძველი ბრაუზერი — ტექსტს ვაჩენ და ვნიშნავ */
+    view.showExp = true; render();
+    const ta = document.getElementById("exp");
+    try { ta.select(); document.execCommand("copy"); alert("ასლი დაკოპირდა ✅"); }
+    catch(e){ alert("ტექსტი ქვემოთ გამოჩნდა — მონიშნე და დააკოპირე."); }
   };
 }
 

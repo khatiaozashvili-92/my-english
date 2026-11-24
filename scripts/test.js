@@ -345,6 +345,9 @@ ok(T().diffs[qc.en.toLowerCase()] === "hard", "ტესტიდანაც �
 
 /* ექსპორტში სირთულეც უნდა იყოს */
 S.go({name:"grpAdmin"});
+ok(!/<textarea/.test(lastHtml), "სარეზერვო ტექსტი დამალული უნდა იყოს");
+click("[data-showexp]");
+ok(/<textarea/.test(lastHtml), "„ტექსტის ნახვა“ უნდა აჩვენებდეს");
 const expJson = lastHtml.match(/<textarea readonly id="exp">([\s\S]*?)<\/textarea>/);
 ok(!!expJson, "ექსპორტის ველი უნდა იყოს");
 if (expJson){
