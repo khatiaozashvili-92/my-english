@@ -75,7 +75,7 @@ sandbox.window = sandbox;
 const ctx = vm.createContext(sandbox);
 vm.runInContext(dataJs, ctx);
 // let/const არ ხდება global property vm-ში — ვამატებ ხიდს
-vm.runInContext(appJs + ";globalThis.__t={get view(){return view},set view(v){view=v},get dir(){return dir},set dir(v){dir=v},get sel(){return sel},get dsel(){return dsel},set dsel(v){dsel=v},get diffs(){return diffs}};", ctx);
+vm.runInContext(appJs + ";globalThis.__t={get view(){return view},set view(v){view=v},get dir(){return dir},set dir(v){dir=v},get sel(){return sel},get dsel(){return dsel},set dsel(v){dsel=v},get diffs(){return diffs},get place(){return place},get hist(){return hist}};", ctx);
 
 const S = sandbox;
 const T = () => S.__t;
@@ -355,6 +355,74 @@ if (expJson){
   ok(parsed.diff && Object.keys(parsed.diff).length > 200, "ექსპორტში სირთულეები უნდა იყოს");
   ok(parsed.place && Object.keys(parsed.place).length > 200, "ექსპორტში ჯგუფები უნდა იყოს");
 }
+
+/* ═════════ დაცვა: მინიჭებული ჯგუფი შემთხვევით არ უნდა შეიცვალოს ═════════ */
+S.dsel = "all";
+
+/* 1. მინიჭების ეკრანზე წინასწარ არაფერი არ უნდა იყოს არჩეული */
+S.go({name:"list", kind:"grp", sec:"jay", grp:"idioms", back:{name:"home"}});
+click("[data-all]");
+click("[data-move]");
+ok(S.view.pSec == null && S.view.pGrp == null, "⚠️ წინასწარ არჩეული არაფერი არ უნდა იყოს");
+ok(/disabled/.test(lastHtml), "შენახვის ღილაკი გამორთული უნდა იყოს სანამ ორივე არ აირჩევა");
+ok(/უკვე აქვს ჯგუფი/.test(lastHtml), "გაფრთხილება, რომ ბარათებს ჯგუფი უკვე აქვთ");
+
+/* 2. უარის თქმისას არაფერი არ უნდა შეიცვალოს */
+const beforeMove = JSON.stringify(T().place);
+sandbox.confirm = () => false;
+click("[data-ps=next]");
+click("[data-pg=idioms]");
+click("[data-save]");
+ok(JSON.stringify(T().place) === beforeMove, "⚠️ „არა“-ს შემდეგ ჯგუფი არ უნდა შეიცვალოს");
+ok(S.view.name === "assign", "უარის მერე იმავე ეკრანზე უნდა დარჩეს");
+
+/* 3. დადასტურებით კი გადადის */
+sandbox.confirm = () => true;
+click("[data-save]");
+S.go({name:"section", sec:"next"});
+ok(/<b>300<\/b> ბარათი/.test(lastHtml), "დადასტურებით უნდა გადავიდეს: " + (lastHtml.match(/<b>\d+<\/b> ბარათი/g)||[]));
+
+/* 4. „↩️ დაბრუნება“ — წინა მდგომარეობის აღდგენა */
+S.go({name:"grpAdmin"});
+ok(/ბოლო ცვლილების დაბრუნება/.test(lastHtml), "დაბრუნების ღილაკი უნდა იყოს");
+click("[data-undo]");
+S.go({name:"section", sec:"jay"});
+ok(/<b>300<\/b> ბარათი/.test(lastHtml), "⚠️ დაბრუნებამ ძველი ჯგუფი უნდა აღადგინოს: " + (lastHtml.match(/<b>\d+<\/b> ბარათი/g)||[]));
+S.go({name:"section", sec:"next"});
+ok(/<b>0<\/b> ბარათი/.test(lastHtml), "next ისევ ცარიელი");
+
+/* ═════════ ტელეფონი → კომპიუტერი: ასლის ჩასმა ═════════ */
+const backup = JSON.stringify({
+  place: { "it's raining cats and dogs.": { sec:"next", grp:"idioms" } },
+  diff:  { "it's raining cats and dogs.": "hard" },
+  groups: [], gname: {}
+});
+S.go({name:"grpAdmin"});
+ok(!/id="imp"/.test(lastHtml), "ჩასმის ველი თავიდან დამალული უნდა იყოს");
+click("[data-impshow]");
+ok(/id="imp"/.test(lastHtml), "„ასლის ჩასმა“-ზე ველი უნდა გამოჩნდეს");
+appEl.value = backup;
+click("[data-import]");
+ok(S.view.name === "home", "აღდგენის მერე მთავარ ეკრანზე უნდა გადავიდეს: " + S.view.name);
+S.go({name:"section", sec:"next"});
+ok(/<b>1<\/b> ბარათი/.test(lastHtml), "⚠️ ასლიდან უნდა აღდგეს 1 ბარათი: " + (lastHtml.match(/<b>\d+<\/b> ბარათი/g)||[]));
+ok(/🔴 1/.test(lastHtml), "ასლიდან სირთულეც უნდა აღდგეს");
+S.go({name:"home"});
+ok(/გასანაწილებელი — 299/.test(lastHtml), "დანარჩენი გასანაწილებელში: " + (lastHtml.match(/გასანაწილებელი — \d+/)||[]));
+
+/* ასლის აღდგენაც უნდა იყოს დასაბრუნებელი */
+S.go({name:"grpAdmin"});
+click("[data-undo]");
+S.go({name:"section", sec:"jay"});
+ok(/<b>300<\/b> ბარათი/.test(lastHtml), "⚠️ აღდგენის დაბრუნებამ ძველი უნდა დააბრუნოს: " + (lastHtml.match(/<b>\d+<\/b> ბარათი/g)||[]));
+
+/* გაფუჭებული ტექსტი არაფერს არ უნდა შეეხოს */
+const safe = JSON.stringify(T().place);
+S.go({name:"grpAdmin"});
+click("[data-impshow]");
+appEl.value = "ეს არ არის JSON";
+click("[data-import]");
+ok(JSON.stringify(T().place) === safe, "⚠️ არასწორმა ტექსტმა დალაგება არ უნდა გააფუჭოს");
 
 /* ───────── ფაილები ───────── */
 ["index.html","data.js","sw.js","manifest.webmanifest","icon-180.png","icon-192.png","icon-512.png","README.md"]

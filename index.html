@@ -210,6 +210,7 @@ const K_PLACE = "myeng.place.v1";   // {cid: {sec, grp}}
 const K_DIFF  = "myeng.diff.v1";    // {cid: "easy"|"mid"|"hard"}
 const K_GRP   = "myeng.groups.v1";  // [{id,name,icon}]
 const K_GNAME = "myeng.gname.v1";   // {grpId: "ახალი სახელი"}
+const K_HIST  = "myeng.hist.v1";    // ბოლო 10 მდგომარეობა — „დაბრუნებისთვის"
 const K_DIR   = "myeng.dir";
 const K_DSEL  = "myeng.dsel";
 
@@ -249,6 +250,23 @@ function grpName(id){ const g = groups().find(g => g.id === id); return g ? g.na
 function grpIcon(id){ const g = groups().find(g => g.id === id); return g ? g.icon : "📘"; }
 function secName(id){ const s = SECS.find(s => s.id === id); return s ? s.name : "—"; }
 
+/* ── უკან დაბრუნება: ყოველ ცვლილებამდე ვინახავ ასლს ── */
+let hist = load(K_HIST, []);
+function snapshot(what){
+  hist.push({ t: Date.now(), what: what,
+              place: JSON.parse(JSON.stringify(place)),
+              diff:  JSON.parse(JSON.stringify(diffs)) });
+  if (hist.length > 10) hist = hist.slice(-10);
+  store(K_HIST, hist);
+}
+function undo(){
+  const h = hist.pop();
+  if (!h) return false;
+  place = h.place; diffs = h.diff;
+  store(K_PLACE, place); store(K_DIFF, diffs); store(K_HIST, hist);
+  return h;
+}
+
 /* ── ადგილი (განყოფილება + ჯგუფი) ── */
 function placeOf(c){
   const p = place[cid(c)];
@@ -256,6 +274,7 @@ function placeOf(c){
   return { sec: c.sec || null, grp: c.grp || null };
 }
 function setPlace(list, sec, grp){
+  snapshot(sec && grp ? "ჯგუფის მინიჭება" : "გასანაწილებელში დაბრუნება");
   list.forEach(c => { place[cid(c)] = { sec: sec, grp: grp }; });
   store(K_PLACE, place);
 }
@@ -263,7 +282,8 @@ function placed(c){ const p = placeOf(c); return !!(p.sec && p.grp); }
 
 /* ── სირთულე ── */
 function diffOf(c){ return diffs[cid(c)] || null; }
-function setDiff(list, d){
+function setDiff(list, d, snap){
+  if (snap) snapshot("სირთულის მინიჭება");
   list.forEach(c => { if (d) diffs[cid(c)] = d; else delete diffs[cid(c)]; });
   store(K_DIFF, diffs);
 }
@@ -769,10 +789,10 @@ function list(){
   });
   const picked = () => DATA.cards.filter(c => sel[cid(c)]);
   app.querySelectorAll("[data-bulk]").forEach(b => b.onclick = () => {
-    setDiff(picked(), b.dataset.bulk); clearSel(); render();
+    setDiff(picked(), b.dataset.bulk, true); clearSel(); render();
   });
   const bn = app.querySelector("[data-bulk-none]");
-  if (bn) bn.onclick = () => { setDiff(picked(), null); clearSel(); render(); };
+  if (bn) bn.onclick = () => { setDiff(picked(), null, true); clearSel(); render(); };
   const mv = app.querySelector("[data-move]");
   if (mv) mv.onclick = () => go({ name:"assign", back:view });
 }
@@ -783,14 +803,14 @@ function assign(){
   const back = view.back || { name:"home" };
   if (!picked.length) return go(back);
 
-  if (!view.pSec || !view.pGrp){
-    const first = placeOf(picked[0]);
-    view.pSec = view.pSec || first.sec || null;
-    view.pGrp = view.pGrp || first.grp || null;
-  }
+  /* ⚠️ წინასწარ არაფერი არ არის არჩეული — სანამ ორივეს თვითონ არ აირჩევ,
+     „შენახვა" გამორთულია. ასე შემთხვევით ვერაფერი გადაინაცვლებს. */
+  const already = picked.filter(c => placed(c)).length;
 
   app.innerHTML =
     head("🗂 ჯგუფის მინიჭება", `${picked.length} ბარათი`, back) +
+    (already ? `<div class="empty" style="margin-bottom:12px">⚠️ მონიშნულიდან <b>${already}</b> ბარათს
+      უკვე აქვს ჯგუფი. შენახვამდე კიდევ ერთხელ გკითხავ.</div>` : ``) +
     `<div class="sub">1. რომელ განყოფილებაში?</div>
     <div class="sechip">${SECS.map(s =>
       `<button data-ps="${esc(s.id)}" class="${view.pSec === s.id ? "on" : ""}">${s.icon}<br>${esc(s.name)}</button>`
@@ -822,11 +842,20 @@ function assign(){
   const sv = app.querySelector("[data-save]");
   if (sv) sv.onclick = () => {
     if (!view.pSec || !view.pGrp) return;
+    /* უკვე დალაგებული ბარათი მხოლოდ დადასტურებით გადადის */
+    const moving = picked.filter(c => {
+      const p = placeOf(c);
+      return p.sec && p.grp && (p.sec !== view.pSec || p.grp !== view.pGrp);
+    });
+    if (moving.length && !confirm(
+      moving.length + " ბარათს უკვე აქვს სხვა ჯგუფი.\n" +
+      "ნამდვილად გადავიტანო " + secName(view.pSec) + " / " + grpName(view.pGrp) + "-ში?")) return;
     setPlace(picked, view.pSec, view.pGrp);
     clearSel();
     go(back.name === "list" && back.kind === "theme" ? { name:"inboxThemes" } : back);
   };
   app.querySelector("[data-inbox]").onclick = () => {
+    if (already && !confirm(already + " ბარათს ჯგუფი მოეხსნება და გასანაწილებელში დაბრუნდება.\nგავაგრძელო?")) return;
     setPlace(picked, null, null);
     clearSel(); go(back);
   };
@@ -855,13 +884,19 @@ function grpAdmin(){
     }).join("")}
       <button class="cube flat small" data-newg><div class="nm">➕ ახალი ჯგუფი</div></button>
     </div>
-    <div class="sub">💾 სარეზერვო ასლი</div>
-    <div class="hint" style="margin:0 0 8px;text-align:left">შენი დალაგება (რომელი ბარათი სად არის
-      და რა სირთულისაა) მხოლოდ <b>ამ ბრაუზერშია</b>. რომ არ დაიკარგოს და სხვა ტელეფონზეც
-      გადმოვიდეს — დააჭირე ქვემოთ და მიღებული ტექსტი ჩატში ჩააგდე. სხვა დროს არ გჭირდება.</div>
+    ${hist.length ? `<div style="text-align:center;margin-top:4px">
+      <button class="mini" data-undo>↩️ ბოლო ცვლილების დაბრუნება (${esc(hist[hist.length-1].what)})</button></div>` : ``}
+
+    <div class="sub">💾 ტელეფონი ↔ კომპიუტერი</div>
+    <div class="hint" style="margin:0 0 8px;text-align:left">დალაგება და სირთულეები მხოლოდ
+      <b>იმ მოწყობილობაშია, სადაც გააკეთე</b> — ტელეფონი და კომპიუტერი ერთმანეთს ვერ ხედავენ.
+      გადასატანად: იქ, სადაც სწორადაა — „📋 ასლის კოპირება"; მეორეზე — „📥 ასლის ჩასმა".</div>
     <button class="btn ghost" data-copy>📋 ასლის კოპირება</button>
+    <button class="btn ghost" data-impshow style="margin-top:8px">📥 ასლის ჩასმა</button>
+    ${view.showImp ? `<textarea id="imp" placeholder="აქ ჩასვი დაკოპირებული ტექსტი (Ctrl+V ან ხანგრძლივი დაჭერა → ჩასმა)"></textarea>
+      <button class="btn" data-import style="margin-top:8px">✅ ჩასმული ასლის აღდგენა</button>` : ``}
     <div style="text-align:center"><button class="mini" data-showexp>
-      ${view.showExp ? "დამალე ტექსტი" : "ტექსტის ნახვა"}</button></div>
+      ${view.showExp ? "დამალე ჩემი ასლის ტექსტი" : "ჩემი ასლის ტექსტის ნახვა"}</button></div>
     ${view.showExp ? `<textarea readonly id="exp">${esc(exp)}</textarea>` : ``}
     <div class="foot">ჯგუფი სამივე განყოფილებაშია;<br>სირთულე (🟢🟡🔴) კი თითო ბარათზე, ჯგუფის შიგნით.</div>`;
 
@@ -885,6 +920,34 @@ function grpAdmin(){
     delete gname[id]; store(K_GNAME, gname); render();
   });
   app.querySelector("[data-showexp]").onclick = () => { view.showExp = !view.showExp; render(); };
+  app.querySelector("[data-impshow]").onclick = () => { view.showImp = !view.showImp; render(); };
+
+  const un = app.querySelector("[data-undo]");
+  if (un) un.onclick = () => {
+    const h = hist[hist.length-1];
+    if (!confirm("დაბრუნდეს მდგომარეობა „" + h.what + "“-ის წინ?")) return;
+    undo(); render();
+  };
+
+  const imp = app.querySelector("[data-import]");
+  if (imp) imp.onclick = () => {
+    const ta = document.getElementById("imp");
+    const txt = (ta && ta.value || "").trim();
+    if (!txt) return alert("ჯერ ჩასვი ტექსტი ველში.");
+    let v;
+    try { v = JSON.parse(txt); } catch(e){ return alert("ტექსტი არ იკითხება — დარწმუნდი, რომ მთლიანად ჩასვი."); }
+    if (!v || typeof v !== "object" || !v.place) return alert("ეს ასლი არ ჰგავს ამ აპის ასლს.");
+    const n = Object.keys(v.place).length;
+    if (!confirm("ასლში " + n + " ბარათის დალაგებაა.\nამ მოწყობილობის ახლანდელი დალაგება ჩანაცვლდება. გავაგრძელო?")) return;
+    snapshot("ასლის აღდგენა");
+    place = v.place; store(K_PLACE, place);
+    if (v.diff){ diffs = v.diff; store(K_DIFF, diffs); }
+    if (Array.isArray(v.groups)){ ugrps = v.groups; store(K_GRP, ugrps); }
+    if (v.gname){ gname = v.gname; store(K_GNAME, gname); }
+    view.showImp = false;
+    alert("აღდგა ✅ " + n + " ბარათის დალაგება.");
+    go({ name:"home" });
+  };
   app.querySelector("[data-copy]").onclick = () => {
     try {
       if (navigator.clipboard && navigator.clipboard.writeText){
